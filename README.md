@@ -1,3 +1,17 @@
+About Blockchain Compression Algorithm
+======================================
+
+Blockchain Compression Algorithm is developed by "Shenzhen BitChain Technology Company",<br />
+[VpnCoin](https://bitcointalk.org/index.php?topic=789961.0) is the world's first invent and integrated blockchain compression algorithm cryptocurrency,<br />
+It can be save about 25% of the disk space and reduce network traffic.<br />
+
+[Announcement thread: https://bitcointalk.org/index.php?topic=1533714.0](https://bitcointalk.org/index.php?topic=1533714.0)<br />
+[BitChain Official website: http://www.bitchaing.com](http://www.bitchaing.com)<br />
+[Twitter: https://twitter.com/BitChaing](https://twitter.com/BitChaing)<br />
+[Facebook: https://www.facebook.com/BiteChain](https://www.facebook.com/BiteChain)<br />
+![alt tag](http://i.imgur.com/PMuVcad.png)<br />
+
+
 Bitcoin integration/staging tree
 ================================
 

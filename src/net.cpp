@@ -53,6 +53,7 @@ static std::vector<SOCKET> vhListenSocket;
 CAddrMan addrman;
 int nMaxConnections = 125;
 
+
 vector<CNode*> vNodes;
 CCriticalSection cs_vNodes;
 map<CInv, CDataStream> mapRelay;
@@ -537,6 +538,7 @@ void CNode::Cleanup()
 }
 
 
+extern int dw_zip_block;
 void CNode::PushVersion()
 {
     /// when NTP implemented, change to just nTime = GetAdjustedTime()
@@ -545,8 +547,13 @@ void CNode::PushVersion()
     CAddress addrMe = GetLocalAddress(&addr);
     RAND_bytes((unsigned char*)&nLocalHostNonce, sizeof(nLocalHostNonce));
     printf("send version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString().c_str(), addrYou.ToString().c_str(), addr.ToString().c_str());
-    PushMessage("version", PROTOCOL_VERSION, nLocalServices, nTime, addrYou, addrMe,
-                nLocalHostNonce, FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()), nBestHeight);
+    bool fRelayTxes = GetBoolArg("-relaytxes", false);
+    //PushMessage("version", PROTOCOL_VERSION, nLocalServices, nTime, addrYou, addrMe,
+    //            nLocalHostNonce, FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()), nBestHeight, fRelayTxes, dw_zip_block);
+    this->BeginMessage("version");
+    this->ssSend << PROTOCOL_VERSION << nLocalServices << nTime << addrYou << addrMe << nLocalHostNonce;
+    this->ssSend << FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()) << nBestHeight << fRelayTxes << dw_zip_block;
+    this->EndMessage();
 }
 
 

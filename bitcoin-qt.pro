@@ -4,7 +4,8 @@ macx:TARGET = "Bitcoin-Qt"
 VERSION = 0.8.6
 INCLUDEPATH += src src/json src/qt
 QT += network
-DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE
+# DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE
+DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE USE_CRYPT USE_IPV6 USE_SOUND
 CONFIG += no_include_pwd
 CONFIG += thread
 
@@ -17,6 +18,7 @@ CONFIG += thread
 # Dependency library locations can be customized with:
 #    BOOST_INCLUDE_PATH, BOOST_LIB_PATH, BDB_INCLUDE_PATH,
 #    BDB_LIB_PATH, OPENSSL_INCLUDE_PATH and OPENSSL_LIB_PATH respectively
+
 
 OBJECTS_DIR = build
 MOC_DIR = build
@@ -31,11 +33,12 @@ contains(RELEASE, 1) {
 
     !win32:!macx {
         # Linux: static link and extra security (see: https://wiki.debian.org/Hardening)
-        LIBS += -Wl,-Bstatic -Wl,-z,relro -Wl,-z,now
+        LIBS += -Wl,-Bstatic
     }
 }
 
 !win32 {
+DEFINES += _7ZIP_ST
     # for extra security against potential buffer overflows: enable GCCs Stack Smashing Protection
     QMAKE_CXXFLAGS *= -fstack-protector-all
     QMAKE_LFLAGS *= -fstack-protector-all
@@ -47,7 +50,7 @@ QMAKE_CXXFLAGS *= -D_FORTIFY_SOURCE=2
 # for extra security on Windows: enable ASLR and DEP via GCC linker flags
 win32:QMAKE_LFLAGS *= -Wl,--dynamicbase -Wl,--nxcompat
 # on Windows: enable GCC large address aware linker flag
-win32:QMAKE_LFLAGS *= -Wl,--large-address-aware
+ win32:QMAKE_LFLAGS *= -Wl,--large-address-aware -static
 
 # use: qmake "USE_QRCODE=1"
 # libqrencode (http://fukuchi.org/works/qrencode/index.en.html) must be installed for support
@@ -163,6 +166,15 @@ HEADERS += src/qt/bitcoingui.h \
     src/bloom.h \
     src/mruset.h \
     src/checkqueue.h \
+    src/lz4/lz4.h \
+    src/lzma/Alloc.h \
+    src/lzma/LzFind.h \
+    src/lzma/LzHash.h \
+    src/lzma/Compiler.h \
+    src/lzma/LzmaDec.h \
+    src/lzma/LzmaEnc.h \
+    src/lzma/LzmaLib.h \
+    src/lzma/Precomp.h \
     src/json/json_spirit_writer_template.h \
     src/json/json_spirit_writer.h \
     src/json/json_spirit_value.h \
@@ -240,6 +252,14 @@ SOURCES += src/qt/bitcoin.cpp \
     src/addrman.cpp \
     src/db.cpp \
     src/walletdb.cpp \
+    src/lz4/lz4.c \
+    src/lzma/7zAlloc.c \
+    src/lzma/Alloc.c \
+    src/lzma/LzFind.c \
+    src/lzma/LzmaDec.c \
+    src/lzma/LzmaEnc.c \
+    src/lzma/LzmaLib.c \
+    src/blockchain-compression-algorithm.cpp \
     src/qt/clientmodel.cpp \
     src/qt/guiutil.cpp \
     src/qt/transactionrecord.cpp \
@@ -294,6 +314,13 @@ FORMS += src/qt/forms/sendcoinsdialog.ui \
     src/qt/forms/askpassphrasedialog.ui \
     src/qt/forms/rpcconsole.ui \
     src/qt/forms/optionsdialog.ui
+
+win32:{
+HEADERS += src/lzma/LzFindMt.h
+HEADERS += src/lzma/Threads.h
+SOURCES += src/lzma/LzFindMt.c
+SOURCES += src/lzma/Threads.c
+}
 
 contains(USE_QRCODE, 1) {
 HEADERS += src/qt/qrcodedialog.h

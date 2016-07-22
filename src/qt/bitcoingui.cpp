@@ -53,8 +53,16 @@
 
 #include <iostream>
 
+extern int dw_zip_block;
 const QString BitcoinGUI::DEFAULT_WALLET = "~Default";
 
+void BitcoinGUI::syncSomething()
+{
+    if( dw_zip_block > 0 )
+    {
+        blockchaincompressIcon->show();
+    }
+}
 BitcoinGUI::BitcoinGUI(QWidget *parent) :
     QMainWindow(parent),
     clientModel(0),
@@ -110,6 +118,19 @@ BitcoinGUI::BitcoinGUI(QWidget *parent) :
     labelConnectionsIcon = new QLabel();
     labelBlocksIcon = new QLabel();
     frameBlocksLayout->addStretch();
+    //if( dw_zip_block > 0 )
+    {
+        blockchaincompressIcon = new QLabel();
+        QPixmap* bcaPix = new QPixmap(":icons/blockchaincompress");
+        blockchaincompressIcon->setPixmap(*bcaPix);  
+        blockchaincompressIcon->setFixedSize(16, 16);
+        blockchaincompressIcon->setScaledContents(true);
+        blockchaincompressIcon->setToolTip(tr("Blockchain compression has been activated"));
+        frameBlocksLayout->addWidget(blockchaincompressIcon);
+        frameBlocksLayout->addStretch();
+        blockchaincompressIcon->hide();
+    }
+
     frameBlocksLayout->addWidget(labelEncryptionIcon);
     frameBlocksLayout->addStretch();
     frameBlocksLayout->addWidget(labelConnectionsIcon);

@@ -197,6 +197,7 @@ public:
     CCriticalSection cs_filter;
     CBloomFilter* pfilter;
     int nRefCount;
+    int dw_zip_block;
 protected:
 
     // Denial-of-service detection/prevention
@@ -245,7 +246,7 @@ public:
         fNetworkNode = false;
         fSuccessfullyConnected = false;
         fDisconnect = false;
-        nRefCount = 0;
+        nRefCount = 0;      dw_zip_block = 0;
         nSendSize = 0;
         nSendOffset = 0;
         hashContinue = 0;

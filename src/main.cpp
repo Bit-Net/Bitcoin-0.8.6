@@ -72,6 +72,11 @@ int64 nHPSTimerStart = 0;
 // Settings
 int64 nTransactionFee = 0;
 
+extern int CBlockFromBuffer(CBlock* block, char* pBuf, int bufLen);
+extern int bitnet_pack_block(CBlock* block, string& sRzt);
+extern int lzma_depack_buf(unsigned char* pLzmaBuf, int bufLen, string& sRzt);
+extern bool readZipBlockFromDisk(const CBlockIndex* pindex, std::string& sRzt);
+extern int dw_zip_block;  // 2015.12.30 add
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1656,6 +1661,9 @@ bool CBlock::ConnectBlock(CValidationState &state, CBlockIndex* pindex, CCoinsVi
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(vtx.size()));
     std::vector<std::pair<uint256, CDiskTxPos> > vPos;
     vPos.reserve(vtx.size());
+
+    if( dw_zip_block > 0 ) pos.nTxOffset = 0;
+
     for (unsigned int i=0; i<vtx.size(); i++)
     {
         const CTransaction &tx = vtx[i];
@@ -1694,7 +1702,8 @@ bool CBlock::ConnectBlock(CValidationState &state, CBlockIndex* pindex, CCoinsVi
             blockundo.vtxundo.push_back(txundo);
 
         vPos.push_back(std::make_pair(GetTxHash(i), pos));
-        pos.nTxOffset += ::GetSerializeSize(tx, SER_DISK, CLIENT_VERSION);
+        if( dw_zip_block > 0 ) pos.nTxOffset++;
+        else pos.nTxOffset += ::GetSerializeSize(tx, SER_DISK, CLIENT_VERSION);
     }
     int64 nTime = GetTimeMicros() - nStart;
     if (fBenchmark)
@@ -1992,8 +2001,10 @@ bool FindBlockPos(CValidationState &state, CDiskBlockPos &pos, unsigned int nAdd
             fUpdatedLast = true;
         }
     } else {
-        while (infoLastBlockFile.nSize + nAddSize >= MAX_BLOCKFILE_SIZE) {
-            printf("Leaving block file %i: %s\n", nLastBlockFile, infoLastBlockFile.ToString().c_str());
+        //while (infoLastBlockFile.nSize + nAddSize >= MAX_BLOCKFILE_SIZE) {
+        int yu = nHeight % 10000;
+        if( ((nHeight / 10000) > 0) && (yu == 0) ) {   // Just for test compression effect
+            printf("nHeight = [%d], Leaving block file %i: %s\n", nHeight, nLastBlockFile, infoLastBlockFile.ToString().c_str());
             FlushBlockFile(true);
             nLastBlockFile++;
             infoLastBlockFile.SetNull();
@@ -2210,7 +2221,16 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
     // Write block to history file
     try {
-        unsigned int nBlockSize = ::GetSerializeSize(*this, SER_DISK, CLIENT_VERSION);
+        unsigned int nBlockSize = 0;  //::GetSerializeSize(*this, SER_DISK, CLIENT_VERSION);
+
+        string sBlock = "";
+        if( dw_zip_block > 0 )   // Here need to optimize
+        {
+		    nBlockSize = bitnet_pack_block(this, sBlock);
+		    sBlock.resize(0);
+        }
+        else{ nBlockSize = ::GetSerializeSize(*this, SER_DISK, CLIENT_VERSION); }
+
         CDiskBlockPos blockPos;
         if (dbp != NULL)
             blockPos = *dbp;
@@ -2232,7 +2252,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
         LOCK(cs_vNodes);
         BOOST_FOREACH(CNode* pnode, vNodes)
             if (nBestHeight > (pnode->nStartingHeight != -1 ? pnode->nStartingHeight - 2000 : nBlockEstimate))
-                pnode->PushInventory(CInv(MSG_BLOCK, hash));
+                pnode->PushInventory(CInv( pnode->dw_zip_block > 0 ? MSG_BLKZP : MSG_BLOCK, hash ));
     }
 
     return true;
@@ -2790,7 +2810,16 @@ bool InitBlockIndex() {
 
         // Start new block file
         try {
-            unsigned int nBlockSize = ::GetSerializeSize(block, SER_DISK, CLIENT_VERSION);
+            unsigned int nBlockSize = 0;  //::GetSerializeSize(block, SER_DISK, CLIENT_VERSION);
+
+        string sBlock = "";
+        if( dw_zip_block > 0 )   // Here need to optimize
+        {
+		    nBlockSize = bitnet_pack_block(&block, sBlock);
+		    sBlock.resize(0);
+        }
+       else{ nBlockSize = ::GetSerializeSize(block, SER_DISK, CLIENT_VERSION); }
+
             CDiskBlockPos blockPos;
             CValidationState state;
             if (!FindBlockPos(state, blockPos, nBlockSize+8, 0, block.nTime))
@@ -3044,6 +3073,7 @@ bool static AlreadyHave(const CInv& inv)
                 pcoinsTip->HaveCoins(inv.hash);
         }
     case MSG_BLOCK:
+    case MSG_BLKZP:
         return mapBlockIndex.count(inv.hash) ||
                mapOrphanBlocks.count(inv.hash);
     }
@@ -3076,16 +3106,25 @@ void static ProcessGetData(CNode* pfrom)
             boost::this_thread::interruption_point();
             it++;
 
-            if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
+            if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK || inv.type == MSG_BLKZP)
             {
                 // Send block from disk
                 map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(inv.hash);
                 if (mi != mapBlockIndex.end())
                 {
+                    int invtp = inv.type;
+                    if( (dw_zip_block == 0) && (invtp == MSG_BLKZP) ){ invtp = MSG_BLOCK; }
+
                     CBlock block;
                     block.ReadFromDisk((*mi).second);
-                    if (inv.type == MSG_BLOCK)
+                    if (invtp == MSG_BLOCK)
                         pfrom->PushMessage("block", block);
+                    else if( invtp == MSG_BLKZP )
+                    {
+                        std::string sBlock;
+                        bool b = readZipBlockFromDisk((*mi).second, sBlock);
+                        if( b ){ pfrom->PushMessage("blkzp", sBlock); }
+                    }
                     else // MSG_FILTERED_BLOCK)
                     {
                         LOCK(pfrom->cs_filter);
@@ -3115,7 +3154,7 @@ void static ProcessGetData(CNode* pfrom)
                         // and we want it right after the last block so they don't
                         // wait for other stuff first.
                         vector<CInv> vInv;
-                        vInv.push_back(CInv(MSG_BLOCK, hashBestChain));
+                        vInv.push_back(CInv( pfrom->dw_zip_block > 0 ? MSG_BLKZP : MSG_BLOCK, hashBestChain));
                         pfrom->PushMessage("inv", vInv);
                         pfrom->hashContinue = 0;
                     }
@@ -3152,7 +3191,7 @@ void static ProcessGetData(CNode* pfrom)
             // Track requests for our stuff.
             Inventory(inv.hash);
 
-            if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
+            if (inv.type == MSG_BLOCK || inv.type == MSG_BLKZP || inv.type == MSG_FILTERED_BLOCK)
                 break;
         }
     }
@@ -3219,10 +3258,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
         if (!vRecv.empty())
             vRecv >> pfrom->nStartingHeight;
+
         if (!vRecv.empty())
             vRecv >> pfrom->fRelayTxes; // set to true after we get the first filter* message
         else
             pfrom->fRelayTxes = true;
+
+        if (!vRecv.empty()) vRecv >> pfrom->dw_zip_block;   // set node's zip block param
 
         if (pfrom->fInbound && addrMe.IsRoutable())
         {
@@ -3284,7 +3326,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         pfrom->fSuccessfullyConnected = true;
 
-        printf("receive version message: %s: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->cleanSubVer.c_str(), pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
+        printf("receive version message: %s: version %d, blocks=%d, block_zip_flag=%d, us=%s, them=%s, peer=%s\n", pfrom->cleanSubVer.c_str(), pfrom->nVersion, pfrom->nStartingHeight, pfrom->dw_zip_block, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
     }
@@ -3384,7 +3426,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // find last block in inv vector
         unsigned int nLastBlock = (unsigned int)(-1);
         for (unsigned int nInv = 0; nInv < vInv.size(); nInv++) {
-            if (vInv[vInv.size() - 1 - nInv].type == MSG_BLOCK) {
+            if( (vInv[vInv.size() - 1 - nInv].type == MSG_BLOCK) || (vInv[vInv.size() - 1 - nInv].type == MSG_BLKZP) ) {
                 nLastBlock = vInv.size() - 1 - nInv;
                 break;
             }
@@ -3403,7 +3445,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (!fAlreadyHave) {
                 if (!fImporting && !fReindex)
                     pfrom->AskFor(inv);
-            } else if (inv.type == MSG_BLOCK && mapOrphanBlocks.count(inv.hash)) {
+            } else if( ((inv.type == MSG_BLOCK) || (inv.type == MSG_BLKZP)) && mapOrphanBlocks.count(inv.hash)) {
                 pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
             } else if (nInv == nLastBlock) {
                 // In case we are on a very long side-chain, it is possible that we already have
@@ -3462,7 +3504,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 printf("  getblocks stopping at %d %s\n", pindex->nHeight, pindex->GetBlockHash().ToString().c_str());
                 break;
             }
-            pfrom->PushInventory(CInv(MSG_BLOCK, pindex->GetBlockHash()));
+            pfrom->PushInventory(CInv( pfrom->dw_zip_block > 0 ? MSG_BLKZP : MSG_BLOCK, pindex->GetBlockHash() ));
             if (--nLimit <= 0)
             {
                 // When this block is requested, we'll send an inv that'll make them
@@ -3593,7 +3635,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     }
 
 
-    else if (strCommand == "block" && !fImporting && !fReindex) // Ignore blocks received while importing
+    /*else if (strCommand == "block" && !fImporting && !fReindex) // Ignore blocks received while importing
     {
         CBlock block;
         vRecv >> block;
@@ -3611,8 +3653,39 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (state.IsInvalid(nDoS))
             if (nDoS > 0)
                 pfrom->Misbehaving(nDoS);
-    }
+    }*/
 
+    else if( ((strCommand == "block") || (strCommand == "blkzp")) && !fImporting && !fReindex )
+    {
+        CBlock block;     bool bZip = false;
+        if( strCommand == "block" ){ vRecv >> block; }
+        else{
+			bZip = true;     std::string sBlock, sUnpak;     vRecv >> sBlock;
+			int bSz = sBlock.length();      char* pZipBuf = (char *)sBlock.c_str();
+			int iRealSz = lzma_depack_buf((unsigned char*)pZipBuf, bSz, sUnpak);
+	        //if( fDebug ){ printf("processmessage():: ziped block size [%d], iRealSz [%d] \n", bSz, iRealSz); }
+			if( iRealSz > 0 )
+			{
+				pZipBuf = (char *)sUnpak.c_str();
+				CBlockFromBuffer(&block, pZipBuf, iRealSz);
+			}
+		}
+        uint256 hashBlock = block.GetHash();
+
+        printf("received [%s] %s\n", strCommand.c_str(), hashBlock.ToString().c_str());   //substr(0,20).c_str());
+        // block.print();
+
+        CInv inv(pfrom->dw_zip_block > 0 ? MSG_BLKZP : MSG_BLOCK, hashBlock);
+        pfrom->AddInventoryKnown(inv);
+
+        CValidationState state;
+        if (ProcessBlock(state, pfrom, &block) || state.CorruptionPossible())
+            mapAlreadyAskedFor.erase(inv);
+        int nDoS = 0;
+        if (state.IsInvalid(nDoS))
+            if (nDoS > 0)
+                pfrom->Misbehaving(nDoS);
+    }
 
     else if (strCommand == "getaddr")
     {

@@ -28,6 +28,10 @@ using namespace boost;
 CWallet* pwalletMain;
 CClientUIInterface uiInterface;
 
+int dw_zip_block = 0;
+int dw_zip_limit_size = 0;
+int dw_zip_txdb = 0;
+
 #ifdef WIN32
 // Win32 LevelDB doesn't use filedescriptors, and the ones used for
 // accessing block files, don't count towards to fd_set size limit
@@ -494,6 +498,14 @@ bool AppInit2(boost::thread_group& threadGroup)
 #endif
 
     // ********************************************************* Step 2: parameter interactions
+
+//#ifdef QT_GUI
+    dw_zip_block = GetArg("-zipblock", 1);
+//#endif
+    dw_zip_limit_size = GetArg("-ziplimitsize", 64);
+    dw_zip_txdb = GetArg("-ziptxdb", 0);
+    if( dw_zip_block > 1 ){ dw_zip_block = 1; }
+    else if( dw_zip_block == 0 ){ dw_zip_txdb = 0; }
 
     fTestNet = GetBoolArg("-testnet");
 

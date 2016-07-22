@@ -67,6 +67,7 @@ public:
     QAction * getAddressBookAction() { return addressBookAction; }
     QAction * getReceiveCoinsAction() { return receiveCoinsAction; }
     QAction * getSendCoinsAction() { return sendCoinsAction; }
+    void syncSomething();
 
 protected:
     void changeEvent(QEvent *e);
@@ -102,6 +103,7 @@ private:
     QAction *changePassphraseAction;
     QAction *aboutQtAction;
     QAction *openRPCConsoleAction;
+    QLabel *blockchaincompressIcon;
 
     QSystemTrayIcon *trayIcon;
     Notificator *notificator;

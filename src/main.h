@@ -12,6 +12,9 @@
 
 #include <list>
 
+using namespace std;
+using namespace boost;
+
 class CWallet;
 class CBlock;
 class CBlockIndex;
@@ -104,6 +107,10 @@ extern int64 nTransactionFee;
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;
 
+extern int bitnet_pack_block(CBlock* block, string& sRzt);
+extern bool getCBlockByFilePos(const CAutoFile& filein, unsigned int nBlockPos, CBlock* block);
+extern bool getCBlocksTxByFilePos(const CAutoFile& filein, unsigned int nBlockPos, unsigned int txId, CTransaction& tx);
+extern int dw_zip_block;
 
 class CReserveKey;
 class CCoinsDB;
@@ -1430,6 +1437,16 @@ public:
 
         // Write index header
         unsigned int nSize = fileout.GetSerializeSize(*this);
+
+        int nSize2 = nSize;
+		string sRzt;
+        if( dw_zip_block > 0 )
+        {
+// compression blcok +++ 
+			nSize = bitnet_pack_block(this, sRzt);  // nSize include 4 byte( block Real size )
+// compression blcok +++ 
+        }
+
         fileout << FLATDATA(pchMessageStart) << nSize;
 
         // Write block
@@ -1437,7 +1454,18 @@ public:
         if (fileOutPos < 0)
             return error("CBlock::WriteToDisk() : ftell failed");
         pos.nPos = (unsigned int)fileOutPos;
-        fileout << *this;
+
+        if( dw_zip_block > 0 )
+        {
+		    //if( fDebug ) printf("main.h Block.WriteToDisk:: nFileRet [%d], nBlockSize [%d], zipBlockSize [%d], nBlockPosRet = [%d] \n", nFileRet, nSize2, nSize, nBlockPosRet);
+// compression blcok +++ 
+		    if( nSize > 0 ){
+				fileout.write(sRzt.c_str(), nSize);
+			}
+			sRzt.resize(0);
+// compression blcok +++ 
+        }
+        else{ fileout << *this; }
 
         // Flush stdio buffers and commit to disk before returning
         fflush(fileout);
@@ -1458,7 +1486,11 @@ public:
 
         // Read block
         try {
-            filein >> *this;
+            if( dw_zip_block > 0 )
+            {
+                getCBlockByFilePos(filein, pos.nPos, this);
+            }
+            else{ filein >> *this; }
         }
         catch (std::exception &e) {
             return error("%s() : deserialize or I/O error", __PRETTY_FUNCTION__);

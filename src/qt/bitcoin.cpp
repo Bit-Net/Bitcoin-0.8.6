@@ -262,6 +262,7 @@ int main(int argc, char *argv[])
                 {
                     window.show();
                 }
+                window.syncSomething();
 
                 // Now that initialization/startup is done, process any command-line
                 // bitcoin: URIs
