@@ -1,2 +1,5 @@
 *
 !.gitignore
+!aes
+!lz4
+!lzma
